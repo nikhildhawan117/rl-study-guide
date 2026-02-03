@@ -1,7 +1,6 @@
 # Comprehensive Reinforcement Learning Study Guide for LLM Post-Training
 
-**Prepared for: Microsoft Superintelligence Post-Training Interview**  
-**Background: Code Post-Training Research at DeepMind (RL & Evals for Gemini Code)**
+**Context:** This guide is especially relevant for code and reasoning post-training applications, but covers RL for LLM post-training broadly.
 
 ---
 
@@ -89,9 +88,9 @@ Most modern LLM RL uses a **hybrid approach**: token-level policy but trajectory
 
 ### 1.3 Policy Gradients: The Foundation
 
-#### First, Let's Validate Your Understanding of SFT
+#### SFT: A Quick Recap
 
-**Your understanding is correct.** Here's exactly what happens in SFT/pretraining:
+Here is what happens in SFT/pretraining:
 
 ```
 SFT Training Step:
@@ -108,12 +107,12 @@ For each position t:
 5. Gradient: Push up P("4"), push down everything else
 ```
 
-**SFT Loss (what you described):**
+**SFT Loss:**
 $$L_{\text{SFT}} = -\sum_{t=1}^{T} \log \pi_\theta(y_t^* | x, y_{<t}^*)$$
 
 In English: "Sum up the negative log probability of each correct token. Minimize this, which means maximize the probability of the correct tokens."
 
-**Key property of SFT**: You know exactly which token is "correct" at every position.
+**Key property of SFT**: The correct token is known at every position.
 
 ---
 
@@ -163,7 +162,7 @@ $$\nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta}\left[\sum_{t=0}^{T
 | $\nabla_\theta \log \pi_\theta(a_t \| s_t)$ | "The direction that increases probability of token $a_t$" (same gradient as SFT!) |
 | $R_t$                                       | "How good was this response?" (the reward, or advantage)                          |
 
-**The key insight**: The gradient $\nabla_\theta \log \pi_\theta(a_t | s_t)$ is IDENTICAL to what you compute in SFT. The difference is:
+**The key insight**: The gradient $\nabla_\theta \log \pi_\theta(a_t | s_t)$ is IDENTICAL to what is computed in SFT. The difference is:
 
 - **SFT**: Weight = 1 for correct token, 0 for everything else
 - **RL**: Weight = Reward (or advantage) for the token that was actually sampled
@@ -270,7 +269,7 @@ The only differences are:
 │          Loss = -log P(correct tokens)                           │
 │          Gradient = Push toward correct tokens                   │
 │                                                                  │
-│  RL:     "Here's a response you generated. Here's its score."   │
+│  RL:     "Here's a response the model generated. Here's its score."   │
 │          Loss = -log P(generated tokens) × advantage             │
 │          Gradient = Push toward/away based on score              │
 │                                                                  │
@@ -425,9 +424,9 @@ This is a crucial distinction that often causes confusion:
 
 ### 1.5 Token-Level vs Trajectory-Level Actions
 
-**Your Question**: _Is the action the entire rollout or is it each token? Do we need to compute Q and V at each token?_
+**Common question:** _Is the action the entire rollout or is it each token? Do we need to compute Q and V at each token?_
 
-**Answer**: It depends on the algorithm, but here's the typical setup:
+**Answer:** It depends on the algorithm, but here is the typical setup:
 
 #### Trajectory-Level (Most Common in LLM RLHF)
 
@@ -758,7 +757,7 @@ With clipping (ε = 0.2):
 
 ---
 
-**Summary in one sentence**: Clipping says "you can increase or decrease any token's probability by at most 20% per update step, no matter how good or bad the advantage is."
+**Summary in one sentence**: Clipping limits how much any token's probability can increase or decrease to at most 20% per update step, no matter how good or bad the advantage is.
 
 ### 4.3 Generalized Advantage Estimation (GAE)
 
@@ -1025,7 +1024,7 @@ This is simpler and cheaper than maintaining a separate value network!
 
 ### 6.3 KL Divergence Penalty
 
-**Your Question**: _Is it always the base model or does it update? How is it computed?_
+**Common question:** _Is the reference always the base model or does it update? How is KL computed?_
 
 #### Reference Policy
 
@@ -1648,4 +1647,4 @@ Verification: This satisfies the KKT conditions for the constrained optimization
 ---
 
 _Last updated: February 2026_
-_Good luck with your interview!_
+_Good luck with your studies and interview preparation!_

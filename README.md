@@ -1,8 +1,6 @@
 # RL for LLM Post-Training: Interview Study Guide
 
-**Prepared for Microsoft Superintelligence Post-Training Interview**
-
-This comprehensive study guide covers reinforcement learning algorithms used in LLM post-training, specifically tailored for someone with a background in code post-training research at DeepMind.
+This comprehensive study guide covers reinforcement learning algorithms used in LLM post-training. It is particularly useful for readers with a background in or interest in code post-training and reasoning applications.
 
 ---
 
@@ -158,7 +156,7 @@ Pedagogical implementations of key algorithms:
 
 ## Quick Self-Test Questions
 
-Before your interview, make sure you can answer:
+Before an interview (or for self-testing), readers should be able to answer:
 
 1. **Derive the policy gradient theorem** from first principles using the log-derivative trick.
 
@@ -174,19 +172,19 @@ Before your interview, make sure you can answer:
 
 7. **What's the difference between** the reward model, value function, and advantage?
 
-8. **When would you use GRPO vs PPO** vs DPO?
+8. **When would one use GRPO vs PPO** vs DPO?
 
 ---
 
 ## Notes for Code Post-Training Context
 
-Given your background in code post-training at DeepMind:
+For readers working on or interested in code post-training:
 
-- **Verifiable rewards** are your strength - code either passes tests or doesn't
-- **GRPO** is particularly relevant - DeepSeek-R1 showed it works well with binary rewards
+- **Verifiable rewards** are a major advantage—code either passes tests or doesn't
+- **GRPO** is particularly relevant; DeepSeek-R1 showed it works well with binary rewards
 - **Process reward models** may be worth discussing for multi-step code generation
 - **Execution feedback** eliminates the need for learned reward models
-- **Credit assignment** is less of an issue when you have step-by-step verification
+- **Credit assignment** is less of an issue when step-by-step verification is available
 
 ---
 
@@ -194,4 +192,4 @@ Given your background in code post-training at DeepMind:
 
 This guide was prepared February 2026. Check for updates to algorithms and best practices, as the field moves quickly.
 
-Good luck with your interview!
+Good luck with your studies and interview preparation!

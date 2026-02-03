@@ -10,7 +10,7 @@ This is a common source of confusion. Let's be precise:
 
 ### Q is NOT Ground Truth
 
-The Q-function $Q^\pi(s, a)$ is **not** the actual reward from the environment. It is an **estimate** of the **expected cumulative future reward** if you take action $a$ in state $s$ and then follow policy $\pi$.
+The Q-function $Q^\pi(s, a)$ is **not** the actual reward from the environment. It is an **estimate** of the **expected cumulative future reward** if the agent takes action $a$ in state $s$ and then follows policy $\pi$.
 
 $$Q^\pi(s, a) = \mathbb{E}_\pi\left[\sum_{t=0}^{T} \gamma^t r_t \mid s_0 = s, a_0 = a\right]$$
 
@@ -25,7 +25,7 @@ $$Q^\pi(s, a) = \mathbb{E}_\pi\left[\sum_{t=0}^{T} \gamma^t r_t \mid s_0 = s, a_
 
 ### The Relationship
 
-After completing a rollout, you get the **actual return** $R$. The Q-function is trained to **predict** this return before you've finished.
+After completing a rollout, the **actual return** $R$ is observed. The Q-function is trained to **predict** this return before the rollout has finished.
 
 Think of it like:
 
@@ -41,7 +41,7 @@ In most LLM RLHF setups:
 2. **Value Function** $V_\psi(s)$: Trained during RL to predict expected reward
 3. **Q-function**: Often not explicitly used; replaced by trajectory-level rewards + GAE
 
-When we use **code execution feedback** (your domain), the reward is truly ground truth—the code either passes tests or doesn't. This is a **verifiable reward** and is simpler than learned reward models.
+When **code execution feedback** is used (e.g., in code post-training), the reward is truly ground truth—the code either passes tests or doesn't. This is a **verifiable reward** and is simpler than learned reward models.
 
 ---
 
@@ -151,7 +151,7 @@ This requires no learning, just multiple samples per prompt.
 
 ## 3. Rollouts and Advantage Computation: When Does What Happen?
 
-### Your Question: "We usually allow the model to finish its rollout before computing advantage, right?"
+### Common Question: "We usually allow the model to finish its rollout before computing advantage, right?"
 
 **Yes, that's correct for most LLM RLHF setups.**
 
@@ -222,7 +222,7 @@ Time ─────────────────────────
 
 ### Is the Action the Entire Rollout or Each Token?
 
-**It depends on how you set up the MDP:**
+**It depends on how the MDP is set up:**
 
 #### Trajectory-Level Actions (Most Common in LLM RLHF)
 
@@ -246,9 +246,9 @@ Each token gets its own advantage, requiring Q/V at each position.
 
 ### Do We Need Q and V at Each Token?
 
-**For trajectory-level**: No. You only need the final reward.
+**For trajectory-level**: No. Only the final reward is needed.
 
-**For token-level with GAE**: Yes, but only V (not Q). You compute:
+**For token-level with GAE**: Yes, but only V (not Q). The computation is:
 
 - $V(s_t)$ at each token position
 - Use TD errors $\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)$
@@ -267,7 +267,7 @@ Each token gets its own advantage, requiring Q/V at each position.
 
 ## 4. Code Execution Feedback: A Special Case
 
-Since you work on code post-training, here's how things simplify:
+For code post-training applications, the setup simplifies as follows:
 
 ### Verifiable Rewards
 
