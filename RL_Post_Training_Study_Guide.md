@@ -116,6 +116,20 @@ $$L_{\text{SFT}} = -\sum_{t=1}^{T} \log \pi_\theta(y_t^* | x, y_{<t}^*)$$
 
 In English: "Sum up the negative log probability of each correct token. Minimize this, which means maximize the probability of the correct tokens."
 
+**Why is there no "difference" term?** You might expect cross-entropy to compare two distributions explicitly. Here's why it simplifies:
+
+$$L_{\text{cross-entropy}} = -\sum_{v \in \text{vocab}} p_{\text{target}}(v) \cdot \log p_{\text{model}}(v)$$
+
+When target is **one-hot** (probability 1 for correct token, 0 for everything else):
+
+$$L = -\underbrace{1}_{\text{correct}} \cdot \log p_{\text{model}}(\text{"4"}) - \underbrace{0}_{\text{wrong}} \cdot \log p_{\text{model}}(\text{"5"}) - \underbrace{0}_{\text{wrong}} \cdot \log p_{\text{model}}(\text{"the"}) - \ldots$$
+
+All the zeros kill the other terms, leaving:
+
+$$L = -\log p_{\text{model}}(\text{"4"})$$
+
+So cross-entropy with one-hot targets **is** just the negative log-prob of the correct token. The "difference" is implicit: minimizing $-\log p(\text{correct})$ automatically pushes probability toward the correct token (since probabilities must sum to 1).
+
 **Key property of SFT**: The correct token is known at every position.
 
 ---
