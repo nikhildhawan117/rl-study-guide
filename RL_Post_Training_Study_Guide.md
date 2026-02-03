@@ -74,18 +74,18 @@ Most modern LLM RL uses a **hybrid approach**: token-level policy but trajectory
 
 ### 1.2 Key Symbols and Definitions
 
-| Symbol              | Definition                                                                                      | Notes                                                                                       |
-| ------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| $\pi_\theta$        | Policy (the LLM being trained) parameterized by $\theta$                                        |                                                                                             |
-| $\pi_{\text{ref}}$  | Reference policy (frozen base model)                                                            | Used for KL regularization                                                                  |
-| $r(x, y)$           | Reward for response $y$ given prompt $x$                                                        | From reward model or rule-based                                                             |
-| $R(y)$ or $R(\tau)$ | Return (cumulative reward) for trajectory                                                       | Often just terminal reward in LLM setting                                                   |
-| $V^\pi(s)$          | **State Value Function**: Expected return starting from state $s$ following policy $\pi$        | $V^\pi(s) = \mathbb{E}_\pi\left[\sum_{t=0}^{T} \gamma^t r_t \mid s_0 = s\right]$            |
-| $Q^\pi(s, a)$       | **Action-Value Function**: Expected return taking action $a$ in state $s$, then following $\pi$ | $Q^\pi(s,a) = \mathbb{E}_\pi\left[\sum_{t=0}^{T} \gamma^t r_t \mid s_0 = s, a_0 = a\right]$ |
-| $A^\pi(s, a)$       | **Advantage Function**: How much better action $a$ is compared to average                       | $A^\pi(s, a) = Q^\pi(s, a) - V^\pi(s)$                                                      |
-| $\gamma$            | Discount factor                                                                                 | Often 1.0 in LLM setting (finite horizon)                                                   |
-| $\beta$             | KL penalty coefficient                                                                          | Controls deviation from reference                                                           |
-| $\epsilon$          | PPO clipping parameter                                                                          | Typically 0.2                                                                               |
+| Symbol              | Definition                                                                                      | Notes                                                                                                   |
+| ------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| $\pi_\theta$        | Policy (the LLM being trained) parameterized by $\theta$                                        |                                                                                                         |
+| $\pi_{\text{ref}}$  | Reference policy (frozen base model)                                                            | Used for KL regularization                                                                              |
+| $r(x, y)$           | Reward for response $y$ given prompt $x$                                                        | From reward model or rule-based                                                                         |
+| $R(y)$ or $R(\tau)$ | Return (cumulative reward) for trajectory                                                       | Often just terminal reward in LLM setting                                                               |
+| $V^{\pi}(s)$        | **State Value Function**: Expected return starting from state $s$ following policy $\pi$        | $V^{\pi}(s) = \mathbb{E}_\pi\left[\sum_{t=0}^{T} \gamma^t r_t \text{ given } s_0 = s\right]$            |
+| $Q^{\pi}(s, a)$     | **Action-Value Function**: Expected return taking action $a$ in state $s$, then following $\pi$ | $Q^{\pi}(s,a) = \mathbb{E}_\pi\left[\sum_{t=0}^{T} \gamma^t r_t \text{ given } s_0 = s, a_0 = a\right]$ |
+| $A^\pi(s, a)$       | **Advantage Function**: How much better action $a$ is compared to average                       | $A^\pi(s, a) = Q^\pi(s, a) - V^\pi(s)$                                                                  |
+| $\gamma$            | Discount factor                                                                                 | Often 1.0 in LLM setting (finite horizon)                                                               |
+| $\beta$             | KL penalty coefficient                                                                          | Controls deviation from reference                                                                       |
+| $\epsilon$          | PPO clipping parameter                                                                          | Typically 0.2                                                                                           |
 
 ### 1.3 Policy Gradients: The Foundation
 
