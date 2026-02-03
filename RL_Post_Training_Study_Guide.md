@@ -95,16 +95,20 @@ Here is what happens in SFT/pretraining:
 ```
 SFT Training Step:
 ─────────────────
-Input:  "What is 2+2?"
+Prompt: "What is 2+2?"
 Target: "The answer is 4."
 
-For each position t:
-1. Model sees: "What is 2+2? The answer is"
-2. Model outputs: probability distribution over vocabulary
-   e.g., P("4") = 0.3, P("5") = 0.1, P("the") = 0.05, ...
-3. Ground truth: one-hot vector where P("4") = 1.0, everything else = 0.0
-4. Loss: Cross-entropy between model distribution and ground truth
-5. Gradient: Push up P("4"), push down everything else
+For EACH position, model sees everything BEFORE that position and predicts the next token:
+
+Position 1: sees "What is 2+2?"           → predict "The"    ✓
+Position 2: sees "What is 2+2? The"       → predict "answer" ✓
+Position 3: sees "What is 2+2? The answer"→ predict "is"     ✓
+Position 4: sees "What is 2+2? The answer is" → predict "4"  ✓
+
+Loss = sum of cross-entropy at ALL positions
+     = -log P("The") - log P("answer") - log P("is") - log P("4")
+
+We maximize probability of the correct next token at EVERY position.
 ```
 
 **SFT Loss:**
