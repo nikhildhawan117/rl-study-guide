@@ -1,6 +1,49 @@
-# RL for LLM Post-Training: Interview Study Guide
+# ML Study Guides for Post-Training Roles
 
-This comprehensive study guide covers reinforcement learning algorithms used in LLM post-training. It is particularly useful for readers with a background in or interest in code post-training and reasoning applications.
+This repository contains comprehensive study guides for ML engineering interviews, particularly for LLM post-training positions.
+
+---
+
+## Contents
+
+### RL for LLM Post-Training
+
+Covers reinforcement learning algorithms used in LLM post-training, particularly useful for code post-training and reasoning applications.
+
+### PyTorch Fundamentals
+
+Covers PyTorch implementation from the ground up—tensors, autograd, nn.Module patterns, and practical examples including a GPT implementation.
+
+---
+
+## Setup
+
+To run the code examples, set up a Python environment with PyTorch:
+
+```bash
+# Clone the repo
+git clone <repo-url>
+cd rl-study-guide
+
+# Create and activate virtual environment
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run PyTorch examples
+python PyTorch_Code_Examples.py
+
+# Run RL examples
+python Code_Examples.py
+```
+
+**Requirements:**
+
+- Python 3.9+
+- PyTorch 2.0+ (tested with 2.8.0)
+- NumPy
 
 ---
 
@@ -73,9 +116,60 @@ Pedagogical implementations of key algorithms:
 - KL divergence computation
 - Training loop examples
 
+### 5. [PyTorch_Fundamentals_Study_Guide.md](./PyTorch_Fundamentals_Study_Guide.md) (NEW)
+
+Comprehensive PyTorch guide for practitioners who know ML theory but need implementation skills:
+
+- **Core Concepts**
+
+  - Tensors (creation, operations, dtype, reshaping)
+  - Autograd (computational graph, backward, gradient accumulation)
+  - Device management (CPU/GPU)
+
+- **nn.Module Deep Dive**
+
+  - Anatomy of a module (`__init__`, `forward`)
+  - Parameters vs buffers
+  - Nested modules (ModuleList, Sequential)
+  - Common built-in layers
+
+- **Training Mechanics**
+
+  - Optimizer patterns (zero_grad, backward, step)
+  - The canonical training loop
+  - train() vs eval() mode
+  - Saving and loading checkpoints
+
+- **Practical Examples**
+
+  - Linear regression (manual and nn.Module)
+  - MLP for classification
+  - GPT-style transformer (full implementation)
+
+- **Patterns for RL**
+  - Getting log probabilities
+  - KL divergence computation
+  - Gradient clipping, freezing parameters
+  - Mixed precision training
+
+### 6. [PyTorch_Code_Examples.py](./PyTorch_Code_Examples.py) (NEW)
+
+Runnable code for all PyTorch examples:
+
+- Tensor operations playground
+- Autograd demonstrations
+- Module patterns comparison
+- Complete training loops
+- Linear regression (manual + module)
+- MLP classification
+- Minimal GPT implementation
+- RL-specific patterns (log probs, KL, detach)
+
 ---
 
 ## Suggested Study Order
+
+### For RL Post-Training (Original)
 
 ### Week 1: Foundations
 
@@ -101,6 +195,29 @@ Pedagogical implementations of key algorithms:
 2. Review Quick Reference Sheet daily
 3. Practice explaining each algorithm from memory
 4. Go through the interview preparation checklist
+
+### For PyTorch Fundamentals (2-3 hours)
+
+**Hour 1: Core Concepts**
+
+1. Read Sections 1-2 (Tensors, Autograd)
+2. Run `tensor_basics()`, `tensor_operations()`, `autograd_demo()` in the code examples
+3. Key goal: Understand `requires_grad`, `backward()`, gradient accumulation
+
+**Hour 2: nn.Module and Training**
+
+1. Read Sections 3-6 (Module, Training Loop, Loss, Data)
+2. Run `module_demo()`, `training_loop_demo()`
+3. Run `linear_regression_manual()` and `linear_regression_module()` to see both approaches
+4. Key goal: Be able to write a training loop from memory
+
+**Hour 3: Advanced Examples**
+
+1. Read Sections 7-10 (Examples, Patterns)
+2. Run `mlp_classification()` and `gpt_example()`
+3. Study the GPT code carefully—understand each component
+4. Run `rl_patterns()` to see how this connects to post-training
+5. Key goal: Understand transformer implementation and RL-specific patterns
 
 ---
 
