@@ -227,15 +227,15 @@ Token "5" at final position:
 
 #### Why Advantage Instead of Raw Reward?
 
-If we use raw reward $R$, we have a problem:
+If we use raw reward $R$, we have problems:
 
 ```
-Response A: reward = 8.5  → Increase probability of all tokens
-Response B: reward = 8.2  → Increase probability of all tokens
-Response C: reward = 8.0  → Increase probability of all tokens
+Response A: reward = 8.5  → Increase probability of all tokens (by 8.5)
+Response B: reward = 8.2  → Increase probability of all tokens (by 8.2)
+Response C: reward = 8.0  → Increase probability of all tokens (by 8.0)
 ```
 
-Everything gets reinforced! No learning signal about which response is BETTER.
+There _is_ a relative signal—higher rewards get reinforced more. But (1) the magnitude is tiny (8.5 vs 8.0), and (2) we _never_ decrease below-average responses—we only increase them less. With all positive rewards, every response gets its probability boosted; we're not explicitly discouraging the worse ones.
 
 **Solution: Use advantage** $A = R - \text{baseline}$
 
@@ -255,7 +255,7 @@ Now we're asking: "Was this response BETTER or WORSE than average?" This gives a
 
 Here's what we actually minimize:
 
-$$L_{\text{RL}}(\theta) = -\mathbb{E}_{x, y \sim \pi_\theta}\left[\left(\sum_{t=1}^{T} \log \pi_\theta(y_t | x, y_{<t})\right) \cdot A(x, y)\right]$$
+$$L_{\text{RL}}(\theta) = -\mathbb{E}_{x, y \sim \pi_\theta}\left[\big(\sum_{t=1}^{T} \log \pi_\theta(y_t | x, y_{<t})\big) \cdot A(x, y)\right]$$
 
 **In plain English**:
 
