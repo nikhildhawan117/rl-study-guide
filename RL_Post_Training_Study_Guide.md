@@ -89,21 +89,288 @@ Most modern LLM RL uses a **hybrid approach**: token-level policy but trajectory
 
 ### 1.3 Policy Gradients: The Foundation
 
-The goal of policy gradient methods is to maximize expected reward:
+#### First, Let's Validate Your Understanding of SFT
+
+**Your understanding is correct.** Here's exactly what happens in SFT/pretraining:
+
+```
+SFT Training Step:
+─────────────────
+Input:  "What is 2+2?"
+Target: "The answer is 4."
+
+For each position t:
+1. Model sees: "What is 2+2? The answer is"
+2. Model outputs: probability distribution over vocabulary
+   e.g., P("4") = 0.3, P("5") = 0.1, P("the") = 0.05, ...
+3. Ground truth: one-hot vector where P("4") = 1.0, everything else = 0.0
+4. Loss: Cross-entropy between model distribution and ground truth
+5. Gradient: Push up P("4"), push down everything else
+```
+
+**SFT Loss (what you described):**
+$$L_{\text{SFT}} = -\sum_{t=1}^{T} \log \pi_\theta(y_t^* | x, y_{<t}^*)$$
+
+In English: "Sum up the negative log probability of each correct token. Minimize this, which means maximize the probability of the correct tokens."
+
+**Key property of SFT**: You know exactly which token is "correct" at every position.
+
+---
+
+#### Now, How Does RL Differ from SFT?
+
+**The fundamental problem**: In RL, we DON'T have a "correct" token at each position. We only have:
+
+- A complete response the model generated
+- A reward score for that complete response (e.g., "this response scored 0.7")
+
+**The question becomes**: How do we update the model when we don't have per-token ground truth?
+
+**The RL answer**: Instead of saying "this token is correct, increase its probability," we say "this response got a good reward, so increase the probability of ALL the tokens in it."
+
+---
+
+#### SFT vs RL: Side-by-Side Comparison
+
+| Aspect                 | SFT                                          | RL (Policy Gradient)                       |
+| ---------------------- | -------------------------------------------- | ------------------------------------------ |
+| **Signal**             | Per-token ground truth                       | Per-response reward score                  |
+| **What we optimize**   | "Make P(correct token) high"                 | "Make P(high-reward responses) high"       |
+| **Gradient direction** | Push toward the one correct token            | Push toward tokens that led to good reward |
+| **Weighting**          | All tokens weighted equally (or by position) | Tokens weighted by how good the reward was |
+
+---
+
+#### The Policy Gradient: What We Actually Optimize
+
+**Goal**: Maximize expected reward
 
 $$J(\theta) = \mathbb{E}_{x \sim \mathcal{D}, y \sim \pi_\theta(\cdot|x)}[r(x, y)]$$
+
+**In English**: "On average, across all prompts and the responses our model generates, we want the reward to be high."
 
 **The Policy Gradient Theorem** gives us:
 
 $$\nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta}\left[\sum_{t=0}^{T} \nabla_\theta \log \pi_\theta(a_t | s_t) \cdot R_t\right]$$
 
-Where $R_t$ is the "reward-to-go" from time $t$ onwards.
+**In English, piece by piece**:
 
-**Intuition**:
+| Symbol                                      | Plain English                                                                     |
+| ------------------------------------------- | --------------------------------------------------------------------------------- |
+| $\nabla_\theta J(\theta)$                   | "The direction we should move the model weights to increase expected reward"      |
+| $\mathbb{E}_{\tau \sim \pi_\theta}$         | "Average over responses sampled from our current model"                           |
+| $\sum_{t=0}^{T}$                            | "Sum over all tokens in the response"                                             |
+| $\nabla_\theta \log \pi_\theta(a_t \| s_t)$ | "The direction that increases probability of token $a_t$" (same gradient as SFT!) |
+| $R_t$                                       | "How good was this response?" (the reward, or advantage)                          |
 
-- $\nabla_\theta \log \pi_\theta(a_t | s_t)$ points in the direction that increases probability of action $a_t$
-- We weight this by how good that action was ($R_t$)
-- Good actions get reinforced, bad actions get suppressed
+**The key insight**: The gradient $\nabla_\theta \log \pi_\theta(a_t | s_t)$ is IDENTICAL to what you compute in SFT. The difference is:
+
+- **SFT**: Weight = 1 for correct token, 0 for everything else
+- **RL**: Weight = Reward (or advantage) for the token that was actually sampled
+
+---
+
+#### Concrete Example: SFT vs RL Update
+
+**Setup**: Model generated response "The answer is 5" to "What is 2+2?"
+
+**SFT** (if we had ground truth "The answer is 4"):
+
+```
+Token "5" at final position:
+- Ground truth says it should be "4"
+- Gradient: DECREASE P("5"), INCREASE P("4")
+- This happens regardless of anything else
+```
+
+**RL** (we got reward = -1 for this wrong response):
+
+```
+Token "5" at final position:
+- We sampled "5", and the whole response got reward -1
+- Gradient: DECREASE P("5") (weighted by -1)
+- "5" was what we picked, and it led to bad reward, so make it less likely
+
+Token "answer" earlier in response:
+- We sampled "answer", and the whole response got reward -1
+- Gradient: DECREASE P("answer") slightly
+- Even correct intermediate tokens get blamed a little (credit assignment problem!)
+```
+
+**RL** (if we had gotten reward = +1):
+
+```
+Token "5" at final position:
+- We sampled "5", and the whole response got reward +1
+- Gradient: INCREASE P("5") (weighted by +1)
+- Even though "5" is wrong, if the reward model liked it, we reinforce it!
+```
+
+---
+
+#### Why Advantage Instead of Raw Reward?
+
+If we use raw reward $R$, we have a problem:
+
+```
+Response A: reward = 8.5  → Increase probability of all tokens
+Response B: reward = 8.2  → Increase probability of all tokens
+Response C: reward = 8.0  → Increase probability of all tokens
+```
+
+Everything gets reinforced! No learning signal about which response is BETTER.
+
+**Solution: Use advantage** $A = R - \text{baseline}$
+
+```
+Average reward = 8.23
+
+Response A: advantage = 8.5 - 8.23 = +0.27  → Increase probability (slightly)
+Response B: advantage = 8.2 - 8.23 = -0.03  → Decrease probability (slightly)
+Response C: advantage = 8.0 - 8.23 = -0.23  → Decrease probability
+```
+
+Now we're asking: "Was this response BETTER or WORSE than average?" This gives a meaningful learning signal.
+
+---
+
+#### The Complete Picture: RL Loss for LLMs
+
+Here's what we actually minimize:
+
+$$L_{\text{RL}}(\theta) = -\mathbb{E}_{x, y \sim \pi_\theta}\left[\left(\sum_{t=1}^{T} \log \pi_\theta(y_t | x, y_{<t})\right) \cdot A(x, y)\right]$$
+
+**In plain English**:
+
+1. Sample a response $y$ from the model for prompt $x$
+2. Compute the sum of log-probs for each token (just like SFT!)
+3. Multiply by the advantage (how much better than average was this response?)
+4. If advantage > 0: Push UP the probability of all these tokens
+5. If advantage < 0: Push DOWN the probability of all these tokens
+
+**Compare to SFT**:
+
+$$L_{\text{SFT}}(\theta) = -\sum_{t=1}^{T} \log \pi_\theta(y_t^* | x, y_{<t}^*)$$
+
+The only differences are:
+
+1. RL uses sampled tokens $y$, SFT uses ground truth tokens $y^*$
+2. RL multiplies by advantage $A$, SFT implicitly uses weight 1
+
+---
+
+#### Summary: The Mental Model
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    SFT vs RL Mental Model                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  SFT:    "Here's the correct answer. Learn to produce it."      │
+│          Loss = -log P(correct tokens)                           │
+│          Gradient = Push toward correct tokens                   │
+│                                                                  │
+│  RL:     "Here's a response you generated. Here's its score."   │
+│          Loss = -log P(generated tokens) × advantage             │
+│          Gradient = Push toward/away based on score              │
+│                                                                  │
+│  Key difference: RL doesn't know what's "correct" - it only     │
+│  knows what scored well or poorly, and adjusts accordingly.     │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### Code Comparison: SFT vs RL Training Step
+
+Here's how the actual PyTorch code would look, to drive home the similarity:
+
+```python
+# ═══════════════════════════════════════════════════════════════════
+# SFT TRAINING STEP
+# ═══════════════════════════════════════════════════════════════════
+
+def sft_training_step(model, prompt, ground_truth_response):
+    """
+    Standard supervised fine-tuning.
+    We KNOW the correct response.
+    """
+    # Forward pass: get log probabilities for each token position
+    logits = model(prompt + ground_truth_response)
+    log_probs = F.log_softmax(logits, dim=-1)
+
+    # For each position, get the log prob of the CORRECT next token
+    # ground_truth_tokens[t] tells us what token SHOULD come next
+    token_log_probs = log_probs[range(T), ground_truth_tokens]
+
+    # Loss: negative mean log probability (cross-entropy)
+    # We want to MAXIMIZE log prob, so MINIMIZE negative log prob
+    loss = -token_log_probs.mean()
+
+    # All tokens weighted equally (implicitly weight = 1)
+    return loss
+
+
+# ═══════════════════════════════════════════════════════════════════
+# RL (REINFORCE) TRAINING STEP
+# ═══════════════════════════════════════════════════════════════════
+
+def rl_training_step(model, prompt, reward_model, baseline):
+    """
+    Reinforcement learning with policy gradient.
+    We DON'T know the correct response - we sample and score.
+    """
+    # Step 1: SAMPLE a response from the model (not given to us!)
+    sampled_response, sampled_tokens = model.generate(prompt)
+
+    # Step 2: Get log probabilities for the tokens we SAMPLED
+    logits = model(prompt + sampled_response)
+    log_probs = F.log_softmax(logits, dim=-1)
+    token_log_probs = log_probs[range(T), sampled_tokens]  # Our samples, not ground truth!
+
+    # Step 3: Score the response with reward model
+    reward = reward_model(prompt, sampled_response)
+
+    # Step 4: Compute advantage (how much better than average?)
+    advantage = reward - baseline  # e.g., baseline = running average of rewards
+
+    # Step 5: RL Loss = -(sum of log probs) × advantage
+    # If advantage > 0: we want to INCREASE these log probs → loss is negative → gradient descent increases them
+    # If advantage < 0: we want to DECREASE these log probs → loss is positive → gradient descent decreases them
+    loss = -(token_log_probs.sum()) * advantage
+
+    # Key difference: tokens are weighted by advantage, not all equal!
+    return loss
+
+
+# ═══════════════════════════════════════════════════════════════════
+# SIDE-BY-SIDE COMPARISON
+# ═══════════════════════════════════════════════════════════════════
+
+"""
+                        SFT                         RL
+                        ───                         ──
+Tokens:          ground_truth_tokens          sampled_tokens
+                 (given to us)                (model generates)
+
+Log probs of:    correct tokens              sampled tokens
+
+Weighting:       1.0 (all equal)             advantage (varies)
+
+Loss:            -mean(log_probs)            -sum(log_probs) × advantage
+
+Gradient effect: Always push toward          Push toward if advantage > 0
+                 correct tokens              Push away if advantage < 0
+"""
+```
+
+**The punchline**: RL training is almost identical to SFT training! The only differences are:
+
+1. We sample tokens instead of using ground truth
+2. We weight the loss by the advantage instead of treating all tokens equally
+
+---
 
 ### 1.4 Value Functions vs Reward Models
 
@@ -365,27 +632,133 @@ PPO simplifies trust regions using a **clipped surrogate objective**:
 
 $$L^{\text{CLIP}}(\theta) = \mathbb{E}\left[\min\left(r_t(\theta) A_t, \text{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon) A_t\right)\right]$$
 
-Where:
+---
 
-- $r_t(\theta) = \frac{\pi_\theta(a_t|s_t)}{\pi_{\theta_{\text{old}}}(a_t|s_t)}$ is the **probability ratio**
-- $\epsilon$ is typically 0.2
-- $A_t$ is the advantage estimate
+#### What is "clip"? (Plain English Explanation)
 
-#### How Clipping Works
+The `clip` function is just a way to bound a number within a range:
 
 ```
-If A_t > 0 (good action):
-    - We want to increase π(a|s), so r_t > 1 is good
-    - But clip(r_t, 0.8, 1.2) prevents r_t from exceeding 1.2
-    - Gradient is zero once r_t > 1.2
+clip(x, lower, upper) =
+    - If x < lower: return lower
+    - If x > upper: return upper
+    - Otherwise: return x
 
-If A_t < 0 (bad action):
-    - We want to decrease π(a|s), so r_t < 1 is good
-    - But clip prevents r_t from going below 0.8
-    - Gradient is zero once r_t < 0.8
+Examples:
+    clip(0.5, 0.8, 1.2) = 0.8   (0.5 is below 0.8, so return 0.8)
+    clip(1.0, 0.8, 1.2) = 1.0   (1.0 is in range, so return 1.0)
+    clip(1.5, 0.8, 1.2) = 1.2   (1.5 is above 1.2, so return 1.2)
 ```
 
-**Intuition**: Don't change any action's probability by more than ~20% per update.
+**In PPO**: $\text{clip}(r_t, 1-\epsilon, 1+\epsilon)$ with $\epsilon = 0.2$ means:
+
+- Bound $r_t$ to be between 0.8 and 1.2
+- This limits how much the policy can change in one update
+
+---
+
+#### What is $r_t$? (The Probability Ratio)
+
+$$r_t(\theta) = \frac{\pi_\theta(a_t|s_t)}{\pi_{\theta_{\text{old}}}(a_t|s_t)}$$
+
+**In plain English**: "How much more (or less) likely is this token under the new policy compared to the old policy?"
+
+| Value of $r_t$ | Meaning                                                       |
+| -------------- | ------------------------------------------------------------- |
+| $r_t = 1.0$    | New policy assigns same probability as old policy (no change) |
+| $r_t = 1.5$    | New policy is 50% more likely to produce this token           |
+| $r_t = 0.5$    | New policy is 50% less likely to produce this token           |
+| $r_t = 2.0$    | New policy is 2x more likely to produce this token            |
+
+---
+
+#### The Full PPO Objective in Plain English
+
+$$L^{\text{CLIP}}(\theta) = \mathbb{E}\left[\min\left(r_t A_t, \text{clip}(r_t, 0.8, 1.2) \cdot A_t\right)\right]$$
+
+**What this says in English**:
+
+1. Compute $r_t \cdot A_t$: "How much do we want to change, weighted by advantage"
+2. Compute $\text{clip}(r_t, 0.8, 1.2) \cdot A_t$: "Same thing, but cap the ratio at 0.8-1.2"
+3. Take the minimum of these two
+4. This is our loss (we maximize it, so good actions get reinforced)
+
+**Why the minimum?** It's a pessimistic bound that prevents too-large updates:
+
+---
+
+#### How Clipping Works: Detailed Walkthrough
+
+**Case 1: Good action (A > 0) and we want to increase its probability**
+
+```
+Situation: Token "4" was good (advantage = +0.5)
+           Old policy: P("4") = 0.3
+           New policy: P("4") = 0.45
+           Ratio: r = 0.45/0.3 = 1.5 (50% increase)
+
+Without clipping:
+    Loss = r × A = 1.5 × 0.5 = 0.75
+    Gradient keeps pushing up P("4")
+
+With clipping (ε = 0.2):
+    clipped_r = clip(1.5, 0.8, 1.2) = 1.2  (capped!)
+    Loss = min(1.5 × 0.5, 1.2 × 0.5) = min(0.75, 0.6) = 0.6
+
+    The gradient is now ZERO for further increases!
+    We've already increased P("4") by 20%, that's enough for one update.
+```
+
+**Case 2: Bad action (A < 0) and we want to decrease its probability**
+
+```
+Situation: Token "5" was bad (advantage = -0.8)
+           Old policy: P("5") = 0.2
+           New policy: P("5") = 0.08
+           Ratio: r = 0.08/0.2 = 0.4 (60% decrease)
+
+Without clipping:
+    Loss = r × A = 0.4 × (-0.8) = -0.32
+    Gradient keeps pushing down P("5")
+
+With clipping (ε = 0.2):
+    clipped_r = clip(0.4, 0.8, 1.2) = 0.8  (raised to minimum!)
+    Loss = min(0.4 × (-0.8), 0.8 × (-0.8)) = min(-0.32, -0.64) = -0.64
+
+    Wait, min gives -0.64 which is the clipped version.
+    But since A < 0, min actually picks the LESS negative value...
+
+    Actually, for A < 0:
+    min(r × A, clip(r) × A) with r < 1 gives the clipped version
+    This stops us from decreasing probability too much.
+```
+
+**The visual intuition**:
+
+```
+                    Probability Ratio (r)
+                           │
+         Too much          │          Too much
+         decrease          │          increase
+           ◄───────────────┼───────────────►
+                           │
+    ┌──────────────────────┼──────────────────────┐
+    │      CLIP ZONE       │       CLIP ZONE      │
+    │    (no gradient)     │     (no gradient)    │
+    │◄─────────────────────┼─────────────────────►│
+    0.8                   1.0                    1.2
+    │                      │                      │
+    │     ACTIVE ZONE      │                      │
+    │   (gradient flows)   │                      │
+    └──────────────────────┴──────────────────────┘
+
+    When r is in [0.8, 1.2]: Normal gradient, policy updates
+    When r goes outside: Gradient becomes zero, policy stops changing
+```
+
+---
+
+**Summary in one sentence**: Clipping says "you can increase or decrease any token's probability by at most 20% per update step, no matter how good or bad the advantage is."
 
 ### 4.3 Generalized Advantage Estimation (GAE)
 
@@ -510,13 +883,145 @@ Where:
 - $\mu_G = \frac{1}{G}\sum_{j=1}^{G} r_j$ (group mean)
 - $\sigma_G = \sqrt{\frac{1}{G}\sum_{j=1}^{G}(r_j - \mu_G)^2}$ (group std)
 
-**Intuition**: Advantage measures how much better than average this response is, normalized by the group's variance.
+---
+
+**Plain English: What is this computing?**
+
+This is just a **z-score** (standardization) of the rewards:
+
+```
+advantage = (reward - average_reward) / standard_deviation
+```
+
+**Concrete example**:
+
+```
+Prompt: "Write a function to add two numbers"
+
+Generated 8 responses with rewards:
+   Response 1: reward = 0.9  (correct, well-formatted)
+   Response 2: reward = 0.8  (correct, okay format)
+   Response 3: reward = 0.7  (correct, verbose)
+   Response 4: reward = 0.6  (correct, minor issues)
+   Response 5: reward = 0.3  (has a bug)
+   Response 6: reward = 0.2  (wrong approach)
+   Response 7: reward = 0.5  (partially correct)
+   Response 8: reward = 0.4  (has syntax error)
+
+Step 1: Compute mean
+   μ = (0.9+0.8+0.7+0.6+0.3+0.2+0.5+0.4) / 8 = 0.55
+
+Step 2: Compute standard deviation
+   σ ≈ 0.23
+
+Step 3: Compute advantages (z-scores)
+   Response 1: (0.9 - 0.55) / 0.23 = +1.52  ← "Much better than average"
+   Response 2: (0.8 - 0.55) / 0.23 = +1.09  ← "Better than average"
+   Response 3: (0.7 - 0.55) / 0.23 = +0.65  ← "Somewhat better"
+   Response 4: (0.6 - 0.55) / 0.23 = +0.22  ← "Slightly better"
+   Response 5: (0.3 - 0.55) / 0.23 = -1.09  ← "Worse than average"
+   Response 6: (0.2 - 0.55) / 0.23 = -1.52  ← "Much worse than average"
+   Response 7: (0.5 - 0.55) / 0.23 = -0.22  ← "Slightly worse"
+   Response 8: (0.4 - 0.55) / 0.23 = -0.65  ← "Somewhat worse"
+```
+
+**What happens next**:
+
+- Responses with positive advantage → tokens get reinforced (more likely)
+- Responses with negative advantage → tokens get suppressed (less likely)
+
+**Why divide by standard deviation?**
+
+If all responses in a group have similar rewards (σ is small), the differences get amplified. If rewards vary a lot (σ is large), the differences get dampened. This keeps the gradient magnitude consistent across different prompts.
 
 #### GRPO Objective
 
 $$L^{\text{GRPO}}(\theta) = \mathbb{E}\left[\sum_{i=1}^{G} \min\left(r_t^{(i)}(\theta) \hat{A}_i, \text{clip}(r_t^{(i)}(\theta), 1-\epsilon, 1+\epsilon) \hat{A}_i\right)\right] - \beta D_{\text{KL}}(\pi_\theta \| \pi_{\text{ref}})$$
 
 Where $r_t^{(i)}(\theta) = \frac{\pi_\theta(y_i | x)}{\pi_{\theta_{\text{old}}}(y_i | x)}$
+
+---
+
+#### Plain English: What Does the GRPO Objective Actually Mean?
+
+Let's break this scary formula into pieces:
+
+**The full objective has two parts**:
+
+$$\underbrace{\mathbb{E}\left[\sum_{i=1}^{G} \min\left(r_t^{(i)} \hat{A}_i, \text{clip}(r_t^{(i)}, 0.8, 1.2) \hat{A}_i\right)\right]}_{\text{Part 1: PPO-style clipped policy update}} - \underbrace{\beta D_{\text{KL}}(\pi_\theta \| \pi_{\text{ref}})}_{\text{Part 2: KL penalty}}$$
+
+---
+
+**Part 1: The clipped policy update (exactly like PPO)**
+
+This is identical to PPO's clipped objective. In English:
+
+```
+For each response in the group:
+    1. Compute advantage: How much better/worse than the group average?
+    2. Compute ratio: How much more/less likely under new policy vs old?
+    3. Apply clipping: Don't let the ratio go outside [0.8, 1.2]
+    4. Multiply advantage × ratio (clipped if needed)
+    5. Sum across all responses in the group
+```
+
+---
+
+**Part 2: The KL penalty**
+
+```
+Compute: How different is our policy from the original model?
+Multiply by β (a small number like 0.01 or 0.1)
+Subtract from the objective (penalize divergence)
+```
+
+---
+
+**The complete GRPO training step in plain English**:
+
+```
+GRPO Training Step:
+───────────────────
+
+1. SAMPLE: Generate G=16 responses for the same prompt
+   "What is 2+2?" → ["4", "The answer is 4", "2+2=4", "It's 4", ...]
+
+2. SCORE: Get reward for each response
+   Rewards: [1.0, 0.9, 0.95, 0.85, 0.2, 0.8, ...]
+
+3. COMPUTE ADVANTAGE: Normalize within the group
+   Mean reward: 0.75
+   Std reward: 0.25
+   Advantages: [(1.0-0.75)/0.25, (0.9-0.75)/0.25, ...] = [1.0, 0.6, 0.8, 0.4, -2.2, 0.2, ...]
+
+4. FOR EACH RESPONSE:
+   If advantage > 0 (better than average):
+       → Increase probability of all tokens in this response
+       → But clip so we don't increase by more than 20%
+
+   If advantage < 0 (worse than average):
+       → Decrease probability of all tokens in this response
+       → But clip so we don't decrease by more than 20%
+
+5. ADD KL PENALTY:
+   → Also penalize if policy drifts too far from reference
+
+6. UPDATE WEIGHTS:
+   → Take gradient step on this combined objective
+```
+
+---
+
+**Why GRPO works without a value function**:
+
+The key trick is step 3: instead of learning a value function $V(s)$ to estimate "how good is this state?", GRPO just:
+
+1. Generates multiple responses
+2. Uses the **average reward of the group** as the baseline
+3. Responses above average → reinforce them
+4. Responses below average → suppress them
+
+This is simpler and cheaper than maintaining a separate value network!
 
 ### 6.3 KL Divergence Penalty
 
@@ -541,7 +1046,95 @@ $$D_{\text{KL}}(\pi_\theta \| \pi_{\text{ref}}) = \sum_{t=1}^{T} \sum_{v \in \ma
 
 $$\hat{D}_{\text{KL}} = \sum_{t=1}^{T} \left[\log \pi_\theta(y_t | x, y_{<t}) - \log \pi_{\text{ref}}(y_t | x, y_{<t})\right]$$
 
-This is the **reverse KL** estimate using only the generated tokens.
+---
+
+#### Plain English: What Are These Formulas Actually Computing?
+
+**The scary first formula** (theoretical KL):
+
+```
+For each token position in the response:
+    For EVERY word in the vocabulary (50,000+ words):
+        1. Get probability from current policy: P_policy("word")
+        2. Get probability from reference model: P_ref("word")
+        3. Compute: P_policy × log(P_policy / P_ref)
+        4. Add to running sum
+```
+
+This asks: "Across the entire vocabulary, how different are the two probability distributions?"
+
+**Why we don't compute this**: Summing over 50,000 vocabulary items at every token position is expensive.
+
+---
+
+**The practical second formula** (what we actually compute):
+
+```
+For each token that was actually generated:
+    1. Get log-prob from current policy: log P_policy(token)
+    2. Get log-prob from reference: log P_ref(token)
+    3. Compute difference: log P_policy(token) - log P_ref(token)
+    4. Add to running sum
+```
+
+**In even simpler terms**:
+
+| What we compute              | Plain English                                                             |
+| ---------------------------- | ------------------------------------------------------------------------- |
+| $\log \pi_\theta(y_t)$       | "How likely does our current model think this token is?"                  |
+| $\log \pi_{\text{ref}}(y_t)$ | "How likely did the original model think this token is?"                  |
+| Difference                   | "Is our model MORE confident (+) or LESS confident (-) about this token?" |
+| Sum over all tokens          | "Overall, how much has our model's confidence changed from the original?" |
+
+---
+
+**Concrete Example**:
+
+```
+Response: "The answer is 4"
+
+Token 1: "The"
+    Policy log-prob: -1.2      (P ≈ 30%)
+    Reference log-prob: -1.3   (P ≈ 27%)
+    Difference: -1.2 - (-1.3) = +0.1
+    → Policy is slightly MORE confident about "The"
+
+Token 2: "answer"
+    Policy log-prob: -2.5      (P ≈ 8%)
+    Reference log-prob: -2.0   (P ≈ 14%)
+    Difference: -2.5 - (-2.0) = -0.5
+    → Policy is LESS confident about "answer"
+
+Token 3: "is"
+    Policy log-prob: -0.8      (P ≈ 45%)
+    Reference log-prob: -0.9   (P ≈ 41%)
+    Difference: +0.1
+
+Token 4: "4"
+    Policy log-prob: -0.3      (P ≈ 74%)
+    Reference log-prob: -1.5   (P ≈ 22%)
+    Difference: -0.3 - (-1.5) = +1.2
+    → Policy is MUCH more confident about "4" (this is what RL trained!)
+
+Total KL = 0.1 + (-0.5) + 0.1 + 1.2 = 0.9
+
+This KL penalty of 0.9 says: "The policy has diverged from the reference,
+mainly because it's become very confident about outputting '4'"
+```
+
+---
+
+**Why do we penalize this?**
+
+If KL gets too high, the policy has drifted far from the original model:
+
+- It might have "forgotten" general language capabilities
+- It might be overfitting to the reward model
+- It might have found a weird exploit (reward hacking)
+
+The KL penalty says: "Yes, optimize for reward, but don't become too different from the original model."
+
+---
 
 #### Implementation
 
@@ -550,9 +1143,14 @@ def compute_kl_penalty(policy_logprobs, ref_logprobs):
     """
     policy_logprobs: log π_θ(y_t | context) for each token
     ref_logprobs: log π_ref(y_t | context) for each token
+
+    Example:
+        policy_logprobs = [-1.2, -2.5, -0.8, -0.3]  # 4 tokens
+        ref_logprobs    = [-1.3, -2.0, -0.9, -1.5]  # 4 tokens
     """
-    kl = policy_logprobs - ref_logprobs  # Per-token KL
-    return kl.sum()  # Sum over sequence
+    kl = policy_logprobs - ref_logprobs  # Per-token difference
+    # kl = [0.1, -0.5, 0.1, 1.2]
+    return kl.sum()  # Total: 0.9
 ```
 
 #### Why KL Penalty?
