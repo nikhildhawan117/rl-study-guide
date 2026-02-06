@@ -51,6 +51,8 @@ $$\mathcal{L}_{\text{RL}} = -\mathbb{E}_{y \sim \pi_\theta}\left[\sum_{t=1}^{T} 
 
 **The punchline:** The gradient computation $\nabla_\theta \log \pi_\theta(y_t \mid s_t)$ is identical in both cases. RL just multiplies it by the advantage.
 
+> **Implementation note:** Because the model is autoregressive with causal masking, the log-probs of *all* tokens in a trajectory can be computed in a **single forward pass** — you feed in the entire sequence and the model outputs the conditional probability at every position simultaneously. This means the gradient for a full trajectory is also computed in a **single backward pass**. The expensive sequential part is *generating* the trajectory (token-by-token sampling during rollouts). Once you have the trajectory, scoring it and computing gradients is fully parallelized, just like SFT.
+
 ---
 
 ## 3. Why Advantage Instead of Raw Reward?
@@ -308,6 +310,8 @@ $$\mathcal{L}^{\text{GRPO}}(\theta) = \mathbb{E}\left[\sum_{i=1}^{G} \min\!\Big(
 GRPO keeps IS, clipping, and KL penalization from PPO. The only major change is how advantages are computed.
 
 ### Bias-Variance Tradeoff: REINFORCE vs PPO vs GRPO
+
+> **What exactly is biased or variant here?** It's the **signal that scales the gradient** — whatever number multiplies $\nabla \log \pi_\theta$ in the policy gradient update. In REINFORCE that signal is the raw return $R$ (not an advantage — there's no baseline). In PPO it's the advantage $A_t = R_t - V_\phi(s_t)$. In GRPO it's the group-normalized advantage $\hat{A}_i = (R_i - \mu_G)/\sigma_G$. The $\nabla \log \pi_\theta$ part is deterministic given a token; the noisy/biased part is this scaling signal. High variance in it means erratic gradient steps (correct direction *on average* but wildly off on any individual step). High bias means consistently pointed in a slightly wrong direction. This flows directly into the policy gradient, determining how reliably the model improves per update.
 
 | | REINFORCE (Raw Return) | PPO (Learned Critic) | GRPO (Group Mean) |
 |---|---|---|---|
