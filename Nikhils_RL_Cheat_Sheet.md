@@ -307,17 +307,17 @@ $$\mathcal{L}^{\text{GRPO}}(\theta) = \mathbb{E}\left[\sum_{i=1}^{G} \min\!\Big(
 
 GRPO keeps IS, clipping, and KL penalization from PPO. The only major change is how advantages are computed.
 
-### Bias-Variance Tradeoff: GRPO vs PPO
+### Bias-Variance Tradeoff: REINFORCE vs PPO vs GRPO
 
-| | PPO (Learned Critic) | GRPO (Group Mean) |
-|---|---|---|
-| **Bias** | Higher — the critic $V_\phi(s)$ is an imperfect learned approximation of true expected return. Systematic errors propagate into advantage estimates. | Lower — the group mean is a direct Monte Carlo estimate from the policy itself. No function approximation error. |
-| **Variance** | Lower — the critic is trained over many batches and provides a smooth, state-conditioned baseline. | Higher — the group mean is computed from only $G$ samples (e.g., 16). Small sample sizes make it a noisy estimate. |
-| **Compute** | Expensive — requires training and maintaining a separate value network. | Cheaper — no critic network needed, saving significant memory and GPU. |
+| | REINFORCE (Raw Return) | PPO (Learned Critic) | GRPO (Group Mean) |
+|---|---|---|---|
+| **Bias** | Lowest — uses the actual return $R$ directly. No function approximation, no sampling-based baseline. The gradient estimate is unbiased. | Higher — the critic $V_\phi(s)$ is an imperfect learned approximation of true expected return. Systematic errors propagate into advantage estimates. | Lower than PPO — the group mean is a direct Monte Carlo estimate from the policy itself. No function approximation error. |
+| **Variance** | Highest — raw return includes all the noise from the entire trajectory. No baseline to center the signal, so gradients swing wildly between updates. | Lowest — the critic is trained over many batches and provides a smooth, state-conditioned baseline. Clipping and data reuse further stabilize updates. | Middle — the group mean reduces variance vs raw return (it's a baseline), but is computed from only $G$ samples (e.g., 16), so it's noisier than a learned critic. |
+| **Compute** | Cheapest — no extra networks, no data reuse, one gradient step per batch. | Most expensive — requires training and maintaining a separate value network, plus multiple epochs per batch. | Middle — no critic network (saves memory/GPU), but generates $G$ rollouts per prompt and does multiple epochs per batch. |
 
-> **Nuance:** The tradeoff depends on context. For short-horizon tasks (typical single-turn LLM generations), GRPO often works as well or better because the critic doesn't have enough signal to learn a good value function anyway. For long-horizon tasks with sparse rewards, a well-trained critic can significantly outperform the group-based baseline.
+> **Nuance:** The tradeoff depends on context. For short-horizon tasks (typical single-turn LLM generations), GRPO often works as well or better because the critic doesn't have enough signal to learn a good value function anyway. For long-horizon tasks with sparse rewards, a well-trained critic can significantly outperform the group-based baseline. REINFORCE variants (REINFORCE++, RLOO) sit in between — they add baselines to reduce variance substantially while staying cheaper than PPO.
 
-> **On "outliers":** The group mean's variance issue isn't really about outliers per se — it's about **sample size**. With $G = 16$ rollouts, the group mean is a noisy estimate of the true expected reward. A learned value function trained over thousands of batches will be a smoother estimator (at the cost of possible systematic bias from function approximation).
+> **On "outliers":** The group mean's variance issue isn't really about outliers per se — it's about **sample size**. With $G = 16$ rollouts, the group mean is a noisy estimate of the true expected reward. A learned value function trained over thousands of batches will be a smoother estimator (at the cost of possible systematic bias from function approximation). REINFORCE with no baseline is even noisier — it doesn't subtract anything at all.
 
 ---
 
