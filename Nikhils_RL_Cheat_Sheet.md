@@ -248,6 +248,41 @@ There are **six cases** to consider. In each, ask: does the `min` select the cli
 
 Clipping creates a **"no-op zone"**: if the policy has *already* moved in the right direction (reinforcing good tokens or suppressing bad ones) *past the clip boundary*, the gradient shuts off. But if the policy has moved in the *wrong* direction or hasn't moved enough, gradient flows normally. This is a one-sided constraint — it only prevents *excessive* change in the beneficial direction, never blocking corrective change.
 
+### PPO Value Function Clipping
+
+PPO doesn't just clip the policy ratio — it also clips the **value function** update. This is a detail that's easy to miss but matters for stability.
+
+#### The Problem
+
+The critic $V_\phi(s)$ is trained to predict expected returns, and its predictions feed directly into the advantage estimate $A_t = R_t - V_\phi(s_t)$. If the critic makes a large jump between updates (e.g., suddenly predicting very different values), the advantage estimates swing wildly too, destabilizing the policy gradient. Since PPO reuses the same batch for multiple epochs, the critic can overfit to that batch and drift far from its old predictions.
+
+#### The Clipped Value Loss
+
+The fix mirrors the policy clipping idea. Define a clipped value prediction:
+
+$$V_{\text{clip}} = V_{\text{old}}(s_t) + \text{clip}\big(V_{\text{new}}(s_t) - V_{\text{old}}(s_t),\; -\epsilon,\; +\epsilon\big)$$
+
+Then the value loss takes the **max** of the clipped and unclipped squared errors:
+
+$$\mathcal{L}^{V}(\phi) = \frac{1}{2}\, \max\!\Big(\big(R_t - V_{\text{new}}(s_t)\big)^2,\;\; \big(R_t - V_{\text{clip}}(s_t)\big)^2\Big)$$
+
+| Term | What it does |
+|------|-------------|
+| $V_{\text{old}}(s_t)$ | The critic's prediction from the start of this PPO epoch (frozen) |
+| $V_{\text{new}}(s_t)$ | The critic's current prediction (being updated) |
+| $V_{\text{clip}}(s_t)$ | The current prediction, but clamped to within $\pm\epsilon$ of the old one |
+| $R_t$ | The actual return (target) |
+
+#### Why `max` Instead of `min`?
+
+The policy objective uses `min` (pessimistic — pick the *worse* objective to prevent overconfident updates). The value loss uses `max` (also pessimistic — pick the *larger* loss to prevent the critic from "cheating" by jumping to a very different value). If the clipped prediction happens to be closer to the target, `max` ensures we still use the unclipped loss, preventing the critic from taking a shortcut through a large value jump.
+
+#### Why This Matters
+
+Without value clipping, the critic can change dramatically across PPO epochs on the same batch. Since advantages are computed as $A_t = R_t - V(s_t)$, a wildly shifting critic means wildly shifting advantages, which means unstable policy updates — even though the policy ratio itself is clipped. Value clipping ensures that **both halves** of the actor-critic system are constrained to change slowly.
+
+> **Note:** Some implementations omit value clipping and still get good results. The original Schulman et al. PPO paper mentions it but doesn't emphasize it. Empirical studies (e.g., "Implementation Matters in Deep RL") found it can help in some environments but isn't universally necessary. It's one of those implementation details that can matter a lot in practice.
+
 ---
 
 ## 7. GRPO: Group Relative Policy Optimization
@@ -286,9 +321,156 @@ GRPO keeps IS, clipping, and KL penalization from PPO. The only major change is 
 
 ---
 
-## 8. Quick Reference: Connecting the Concepts
+## 8. DPO: Direct Preference Optimization
+
+DPO (Rafailov et al., 2023) is an "RL-free" approach to preference tuning. It achieves the same goal as RLHF (aligning a model with human preferences) but **skips the reward model and the RL loop entirely**.
+
+### The Problem DPO Solves
+
+The standard RLHF pipeline has three stages:
 
 ```
+1. Train a reward model on human preference data
+2. Use RL (PPO) to optimize the policy against that reward model
+3. Add KL penalty to prevent divergence from reference
+```
+
+This is expensive, unstable, and requires careful hyperparameter tuning. DPO collapses all three stages into a single supervised learning objective.
+
+### The Key Insight
+
+Start from the KL-regularized RL objective that RLHF tries to solve:
+
+$$\max_\pi \; \mathbb{E}_{x,\, y \sim \pi}\big[r(x, y)\big] - \beta \, D_{\text{KL}}\big(\pi \| \pi_{\text{ref}}\big)$$
+
+This has a **closed-form optimal solution**:
+
+$$\pi^*(y \mid x) = \frac{1}{Z(x)} \; \pi_{\text{ref}}(y \mid x) \; \exp\!\Big(\frac{r(x, y)}{\beta}\Big)$$
+
+where $Z(x)$ is a normalizing constant (partition function).
+
+The magic trick: **rearrange this to solve for the reward** instead of the policy:
+
+$$r(x, y) = \beta \log \frac{\pi^*(y \mid x)}{\pi_{\text{ref}}(y \mid x)} + \beta \log Z(x)$$
+
+This says: if you know the optimal policy, you implicitly know the reward. The language model *is* secretly a reward model.
+
+### The DPO Loss
+
+Plug this implicit reward into the Bradley-Terry preference model $P(y_w \succ y_l) = \sigma(r(x, y_w) - r(x, y_l))$:
+
+$$\mathcal{L}_{\text{DPO}}(\theta) = -\mathbb{E}_{(x,\, y_w,\, y_l)}\left[\log \sigma\!\Big(\beta \log \frac{\pi_\theta(y_w \mid x)}{\pi_{\text{ref}}(y_w \mid x)} - \beta \log \frac{\pi_\theta(y_l \mid x)}{\pi_{\text{ref}}(y_l \mid x)}\Big)\right]$$
+
+The $Z(x)$ terms cancel (they're the same for both responses to the same prompt), leaving a clean loss.
+
+**In plain English:** For each preference pair $(y_w, y_l)$:
+
+1. Compute how much more the current model likes $y_w$ vs the reference: $\beta \log \frac{\pi_\theta(y_w)}{\pi_{\text{ref}}(y_w)}$
+2. Compute the same for $y_l$: $\beta \log \frac{\pi_\theta(y_l)}{\pi_{\text{ref}}(y_l)}$
+3. The difference should be positive (model should prefer the winner more than the reference does)
+4. Pass through sigmoid + log — this is just binary cross-entropy
+
+### What DPO Is Really Doing
+
+Define the **implicit reward** of the model:
+
+$$\hat{r}_\theta(x, y) = \beta \log \frac{\pi_\theta(y \mid x)}{\pi_{\text{ref}}(y \mid x)}$$
+
+This is how much more (or less) the model likes a response compared to the reference, scaled by $\beta$. The DPO loss is simply:
+
+$$\mathcal{L}_{\text{DPO}} = -\mathbb{E}\left[\log \sigma\big(\hat{r}_\theta(x, y_w) - \hat{r}_\theta(x, y_l)\big)\right]$$
+
+This is binary classification: "does the model's implicit reward correctly rank the preferred response above the rejected one?"
+
+### Advantages of DPO
+
+- **No sampling during training** — purely supervised on static preference pairs
+- **No reward model** — eliminates a whole model and training stage
+- **No value function** — no critic network needed
+- **Simpler and more stable** — standard classification loss, no RL instabilities
+- **KL regularization is built-in** — the $\pi_{\text{ref}}$ terms act as an implicit KL constraint
+
+### Limitations of DPO
+
+- **Offline only** — trains on a fixed dataset of preference pairs. Cannot explore or generate new responses during training, unlike PPO/GRPO which sample on-policy.
+- **Requires global coverage** — the training data must adequately cover the test distribution. If the preference data is narrow, DPO can't generalize beyond it (online RL only needs partial coverage).
+- **Prone to overfitting** — can overfit to the preference dataset, especially with deterministic or noisy preferences. May lead to mode collapse.
+- **No iterative self-improvement** — unlike RL methods, DPO can't discover better strategies through exploration. It can only learn to distinguish between responses already in the dataset.
+
+### When to Use DPO
+
+DPO shines when you have **high-quality, diverse preference data** and want a simple, stable training pipeline. It's less suitable when you need the model to explore and improve beyond what's in the training data (e.g., reasoning tasks where GRPO/PPO excel).
+
+---
+
+## 9. IPO: Identity Preference Optimization
+
+IPO (Azar et al., 2023, DeepMind) addresses a theoretical weakness in DPO's foundations.
+
+### The Problem with DPO's Assumptions
+
+DPO relies on the **Bradley-Terry model**, which assumes that pairwise preferences can be explained by pointwise reward scores:
+
+$$P(y_w \succ y_l) = \sigma\big(r(y_w) - r(y_l)\big)$$
+
+This assumes preferences are **transitive** (if A > B and B > C, then A > C) and can always be reduced to scalar scores. But real human preferences are often:
+- **Noisy** — the same annotator might flip their preference on a re-evaluation
+- **Intransitive** — humans might prefer A over B, B over C, but C over A
+- **Context-dependent** — not reducible to fixed scalar scores
+
+DPO inherits these assumptions and can overfit to them, especially on noisy preference data.
+
+### The ΨPO Framework
+
+IPO is a special case of a more general framework called **ΨPO**, which unifies preference optimization methods:
+
+$$\mathcal{L}_{\Psi\text{PO}}(\theta) = \mathbb{E}_{(x,\, y_w,\, y_l)}\left[\Psi\!\left(\log \frac{\pi_\theta(y_w \mid x)}{\pi_{\text{ref}}(y_w \mid x)} - \log \frac{\pi_\theta(y_l \mid x)}{\pi_{\text{ref}}(y_l \mid x)}\right)\right]$$
+
+Different choices of $\Psi$ give different algorithms:
+
+| $\Psi$ function | Algorithm |
+|---|---|
+| $\Psi(u) = -\log \sigma(\beta u)$ | **DPO** — derived from Bradley-Terry + KL-regularized RL |
+| $\Psi(u) = (u - 1/2\tau)^2$ | **IPO** — directly optimizes pairwise preferences |
+
+### What the IPO Loss Does
+
+The IPO loss:
+
+$$\mathcal{L}_{\text{IPO}}(\theta) = \mathbb{E}\left[\left(\log \frac{\pi_\theta(y_w \mid x)}{\pi_{\text{ref}}(y_w \mid x)} - \log \frac{\pi_\theta(y_l \mid x)}{\pi_{\text{ref}}(y_l \mid x)} - \frac{1}{2\tau}\right)^2\right]$$
+
+**In plain English:** IPO wants the log-probability gap between the preferred and rejected responses (relative to the reference) to be exactly $\frac{1}{2\tau}$. Not infinity, not as large as possible — a specific finite target.
+
+This is critically different from DPO, which (via the sigmoid) pushes the gap toward infinity. That's why DPO can overfit: it keeps trying to make the gap bigger and bigger, eventually overfitting to the training preferences.
+
+### IPO vs DPO: Key Differences
+
+| | DPO | IPO |
+|---|---|---|
+| **Preference model** | Bradley-Terry (requires pointwise rewards) | Direct pairwise preferences (no pointwise reduction) |
+| **Loss shape** | Log-sigmoid — pushes reward gap toward $\infty$ | Squared error — pushes reward gap toward a finite target $\frac{1}{2\tau}$ |
+| **Over-training** | Prone to overfitting as gap is pushed ever larger | Robust — naturally stops when gap reaches target |
+| **Regularization** | Implicit (through $\pi_{\text{ref}}$ ratio) | Built into the squared loss (finite target) |
+| **Noisy preferences** | Sensitive — tries to perfectly separate all pairs | Robust — the finite target tolerates noise |
+
+### When to Use IPO
+
+IPO is preferred when:
+- **Preferences are noisy** — human annotators disagree or are inconsistent
+- **Over-training is a concern** — you want a method that naturally plateaus
+- **Preferences don't fit Bradley-Terry** — intransitive or context-dependent preferences
+
+DPO is preferred when:
+- **Preferences are clean and consistent** — the Bradley-Terry assumption holds
+- **You want maximum separation** — pushing the model as far as possible toward preferred responses
+
+---
+
+## 10. Quick Reference: Connecting the Concepts
+
+```
+Policy Gradient Methods (online, generate + score + update)
+═══════════════════════════════════════════════════════════
 REINFORCE (1992)
    │  Raw reward scaling → high variance, but simple and on-policy
    │
@@ -301,7 +483,7 @@ REINFORCE (1992)
    │     • Reuses data for multiple epochs (sample efficient)
    │     • IS ratio corrects for off-policy data
    │     • Clipping bounds the ratio → reduces IS variance, adds bias
-   │     • Learned critic V(s) → smooth baseline, but adds bias
+   │     • Learned critic V(s) + value clipping → smooth baseline
    │     • KL penalty → regularization (prevents reward hacking)
    │
    └─► GRPO
@@ -309,6 +491,18 @@ REINFORCE (1992)
          • Replaces learned critic with group mean (critic-free)
          • Lower bias, higher variance in advantage estimation
          • Much cheaper (no value network)
+
+Preference Optimization Methods (offline, no RL loop)
+═════════════════════════════════════════════════════════
+DPO
+   │  Implicit reward from policy ratios
+   │  Binary cross-entropy on preference pairs
+   │  Simple + stable, but offline only
+   │
+   └─► IPO
+         • Fixes DPO's over-training problem
+         • Squared loss with finite target (not sigmoid → ∞)
+         • More robust to noisy/intransitive preferences
 ```
 
 ### Algorithm Comparison Table
@@ -320,10 +514,12 @@ REINFORCE (1992)
 | **RLOO** | No | No | No | In reward | Leave-one-out mean | On |
 | **PPO** | Yes | Yes | Yes | Optional | Learned $V(s)$ + GAE | On (with data reuse) |
 | **GRPO** | No | Yes | Yes | Yes | Group mean z-score | On (with data reuse) |
+| **DPO** | No | No | No | Implicit ($\pi_{\text{ref}}$) | N/A — no RL | Offline |
+| **IPO** | No | No | No | In loss | N/A — no RL | Offline |
 
 ---
 
-## 9. Corrections and Common Pitfalls
+## 11. Corrections and Common Pitfalls
 
 A few things that are easy to get wrong:
 
