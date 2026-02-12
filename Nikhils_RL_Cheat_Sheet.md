@@ -305,9 +305,21 @@ where $\mu_G$ and $\sigma_G$ are the mean and std of the group's rewards.
 
 ### GRPO Objective
 
-$$\mathcal{L}^{\text{GRPO}}(\theta) = \mathbb{E}\left[\sum_{i=1}^{G} \min\!\Big(r_t^{(i)} \hat{A}_i,\;\; \text{clip}(r_t^{(i)},\; 1{-}\epsilon,\; 1{+}\epsilon)\,\hat{A}_i\Big)\right] - \beta\, D_{\text{KL}}(\pi_\theta \| \pi_{\text{ref}})$$
+$$\mathcal{L}^{\text{GRPO}}(\theta) = \mathbb{E}\left[\frac{1}{G}\sum_{i=1}^{G} \frac{1}{T_i}\sum_{t=1}^{T_i} \left(\min\!\Big(r_{i,t}\; \hat{A}_i,\;\; \text{clip}(r_{i,t},\; 1{-}\epsilon,\; 1{+}\epsilon)\;\hat{A}_i\Big) - \beta\, D_{\text{KL}}^{(i,t)}\right)\right]$$
 
-GRPO keeps IS, clipping, and KL penalization from PPO. The only major change is how advantages are computed.
+where:
+- $r_{i,t} = \frac{\pi_\theta(y_{i,t} \mid s_{i,t})}{\pi_{\theta_{\text{old}}}(y_{i,t} \mid s_{i,t})}$ is the **per-token** probability ratio for token $t$ in trajectory $i$.
+- $D_{\text{KL}}^{(i,t)}$ is the **per-token** KL divergence between $\pi_\theta$ and $\pi_{\text{ref}}$ at token position $t$.
+
+**Reading the formula — two nested sums:**
+
+- **Outer sum** $\sum_{i=1}^{G}$: iterates over the $G$ trajectories in the group for this prompt.
+- **Inner sum** $\sum_{t=1}^{T_i}$: iterates over all $T_i$ tokens in trajectory $i$. Each token gets its own ratio $r_{i,t}$, its own KL penalty $D_{\text{KL}}^{(i,t)}$, and clipping is applied per-token (just like PPO).
+- **The advantage $\hat{A}_i$** is the same for every token within trajectory $i$ — it's a trajectory-level score. So the same advantage multiplies every token's clipped ratio in that trajectory.
+- **The KL penalty is inside the sum**, not a separate term. It's computed per-token and added to each token's loss before summing. This means every token position is individually penalized for diverging from the reference model.
+- **Variable-length trajectories:** Different trajectories can have different lengths $T_i$. The $\frac{1}{T_i}$ normalizes per trajectory so that longer responses don't dominate the loss simply by having more tokens. (Some implementations sum instead of average — the key point is that the inner loop runs over however many tokens that particular trajectory has.)
+
+GRPO keeps IS, clipping, and KL penalization from PPO. The only major change is how advantages are computed (group mean instead of learned critic).
 
 ### Bias-Variance Tradeoff: REINFORCE vs PPO vs GRPO
 
