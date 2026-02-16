@@ -22,11 +22,13 @@ This is a fundamental tradeoff in machine learning that appears repeatedly in RL
 
 ## 2. SFT vs RL: The Core Idea
 
+> **Notation:** $\pi_\theta$ denotes the model's **policy** — its probability distribution over next tokens, parameterized by weights $\theta$. Writing $\pi_\theta(y_t \mid x, y_{<t})$ means "the probability the model assigns to token $y_t$, given input prompt $x$ and all preceding tokens $y_{<t}$." Training changes $\theta$, which changes the policy.
+
 ### SFT (Supervised Fine-Tuning)
 
 In SFT, you have a known-correct trajectory $y^\ast = (y_1^\ast, y_2^\ast, \ldots, y_T^\ast)$. The model learns to reproduce it by maximizing the probability of each correct token given all preceding tokens:
 
-$$\mathcal{L}_{\text{SFT}} = -\sum_{t=1}^{T} \log \pi_\theta(y_t^\ast \mid x, y_{<t}^\ast)$$
+$$\mathcal{L}_{\text{SFT}} = -\sum_{t=1}^{T} \log~\pi_\theta(y_t^\ast \mid x, y_{<t}^\ast)$$
 
 This is a sum of log-probs (equivalent to the log of the product of conditional probabilities, which avoids the numerical underflow you'd get from multiplying many small numbers directly).
 
@@ -40,7 +42,7 @@ In RL, there is **no known-correct trajectory**. Instead:
 
 The policy gradient loss looks strikingly similar to SFT:
 
-$$\mathcal{L}_{\text{RL}} = -\mathbb{E}_{y \sim \pi_\theta}\left[\sum_{t=1}^{T} \log \pi_\theta(y_t \mid x, y_{<t}) \cdot A(x, y)\right]$$
+$$\mathcal{L}_{\text{RL}} = -\mathbb{E}_{y \sim \pi_\theta}\left[\sum_{t=1}^{T} \log~\pi_\theta(y_t \mid x, y_{<t}) \cdot A(x, y)\right]$$
 
 | | SFT | RL |
 |---|---|---|
@@ -49,7 +51,7 @@ $$\mathcal{L}_{\text{RL}} = -\mathbb{E}_{y \sim \pi_\theta}\left[\sum_{t=1}^{T} 
 | **Signal** | Per-token supervision | Per-trajectory (or per-turn) reward |
 | **Gradient direction** | Always push toward the correct token | Push toward tokens that led to good reward; push away from tokens that led to bad reward |
 
-**The punchline:** The gradient computation $\nabla_\theta \log \pi_\theta(y_t \mid s_t)$ is identical in both cases. RL just multiplies it by the advantage.
+**The punchline:** The gradient computation $\nabla_\theta \log~\pi_\theta(y_t \mid s_t)$ is identical in both cases. RL just multiplies it by the advantage.
 
 > **Implementation note:** Because the model is autoregressive with causal masking, the log-probs of *all* tokens in a trajectory can be computed in a **single forward pass** — you feed in the entire sequence and the model outputs the conditional probability at every position simultaneously. This means the gradient for a full trajectory is also computed in a **single backward pass**. The expensive sequential part is *generating* the trajectory (token-by-token sampling during rollouts). Once you have the trajectory, scoring it and computing gradients is fully parallelized, just like SFT.
 
@@ -85,7 +87,7 @@ Now the gradient directly reflects *relative quality*: "Was this response better
 
 The vanilla REINFORCE algorithm (Williams, 1992) is the most basic form of policy gradient.
 
-$$\nabla_\theta J(\theta) = \mathbb{E}_{y \sim \pi_\theta}\left[\sum_{t=1}^{T} \nabla_\theta \log \pi_\theta(y_t \mid s_t) \cdot R(y)\right]$$
+$$\nabla_\theta J(\theta) = \mathbb{E}_{y \sim \pi_\theta}\left[\sum_{t=1}^{T} \nabla_\theta \log~\pi_\theta(y_t \mid s_t) \cdot R(y)\right]$$
 
 **Key properties:**
 - **Uses raw return $R$, not advantage.** The original algorithm scales log-probs by the trajectory return directly.
@@ -150,7 +152,7 @@ Two decoupled components:
 
 **The fix — importance sampling:** The actor sends back the log-probs from generation time. The learner does a forward pass through the *current* policy on the same trajectory to get updated log-probs, then computes a correction ratio:
 
-$$\rho_t = \frac{\pi_{\theta_\text{new}}(y_t \mid s_t)}{\pi_{\theta_\text{old}}(y_t \mid s_t)} = \exp\Big(\log \pi_{\theta_\text{new}}(y_t \mid s_t) - \log \pi_{\theta_\text{old}}(y_t \mid s_t)\Big)$$
+$$\rho_t = \frac{\pi_{\theta_\text{new}}(y_t \mid s_t)}{\pi_{\theta_\text{old}}(y_t \mid s_t)} = \exp\Big(\log~\pi_{\theta_\text{new}}(y_t \mid s_t) - \log~\pi_{\theta_\text{old}}(y_t \mid s_t)\Big)$$
 
 ### What Does the IS Ratio Mean?
 
@@ -323,11 +325,11 @@ GRPO keeps IS, clipping, and KL penalization from PPO. The only major change is 
 
 ### Bias-Variance Tradeoff: REINFORCE vs PPO vs GRPO
 
-> **What exactly is biased or variant here?** It's the **signal that scales the gradient** — whatever number multiplies $\nabla \log \pi_\theta$ in the policy gradient update.
+> **What exactly is biased or variant here?** It's the **signal that scales the gradient** — whatever number multiplies $\nabla \log~\pi_\theta$ in the policy gradient update.
 >
 > In REINFORCE that signal is the raw return $R$ (not an advantage — there's no baseline). In PPO it's the advantage $A_t = R_t - V_\phi(s_t)$. In GRPO it's the group-normalized advantage $\hat{A}_i = (R_i - \mu_G)/\sigma_G$.
 >
-> The $\nabla \log \pi_\theta$ part is deterministic given a token; the noisy/biased part is this scaling signal. High variance in it means erratic gradient steps (correct direction on average but wildly off on any individual step). High bias means consistently pointed in a slightly wrong direction. This flows directly into the policy gradient, determining how reliably the model improves per update.
+> The $\nabla \log~\pi_\theta$ part is deterministic given a token; the noisy/biased part is this scaling signal. High variance in it means erratic gradient steps (correct direction on average but wildly off on any individual step). High bias means consistently pointed in a slightly wrong direction. This flows directly into the policy gradient, determining how reliably the model improves per update.
 
 | | REINFORCE (Raw Return) | PPO (Learned Critic) | GRPO (Group Mean) |
 |---|---|---|---|
