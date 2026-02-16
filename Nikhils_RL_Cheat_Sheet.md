@@ -323,7 +323,11 @@ GRPO keeps IS, clipping, and KL penalization from PPO. The only major change is 
 
 ### Bias-Variance Tradeoff: REINFORCE vs PPO vs GRPO
 
-> **What exactly is biased or variant here?** It's the **signal that scales the gradient** — whatever number multiplies $\nabla \log \pi_\theta$ in the policy gradient update. In REINFORCE that signal is the raw return $R$ (not an advantage — there's no baseline). In PPO it's the advantage $A_t = R_t - V_\phi(s_t)$. In GRPO it's the group-normalized advantage $\hat{A}_i = (R_i - \mu_G)/\sigma_G$. The $\nabla \log \pi_\theta$ part is deterministic given a token; the noisy/biased part is this scaling signal. High variance in it means erratic gradient steps (correct direction *on average* but wildly off on any individual step). High bias means consistently pointed in a slightly wrong direction. This flows directly into the policy gradient, determining how reliably the model improves per update.
+> **What exactly is biased or variant here?** It's the **signal that scales the gradient** — whatever number multiplies $\nabla \log \pi_\theta$ in the policy gradient update.
+>
+> In REINFORCE that signal is the raw return $R$ (not an advantage — there's no baseline). In PPO it's the advantage $A_t = R_t - V_\phi(s_t)$. In GRPO it's the group-normalized advantage $\hat{A}_i = (R_i - \mu_G)/\sigma_G$.
+>
+> The $\nabla \log \pi_\theta$ part is deterministic given a token; the noisy/biased part is this scaling signal. High variance in it means erratic gradient steps (correct direction on average but wildly off on any individual step). High bias means consistently pointed in a slightly wrong direction. This flows directly into the policy gradient, determining how reliably the model improves per update.
 
 | | REINFORCE (Raw Return) | PPO (Learned Critic) | GRPO (Group Mean) |
 |---|---|---|---|
