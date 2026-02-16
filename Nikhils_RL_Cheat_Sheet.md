@@ -24,9 +24,9 @@ This is a fundamental tradeoff in machine learning that appears repeatedly in RL
 
 ### SFT (Supervised Fine-Tuning)
 
-In SFT, you have a known-correct trajectory $y^* = (y_1^*, y_2^*, \ldots, y_T^*)$. The model learns to reproduce it by maximizing the probability of each correct token given all preceding tokens:
+In SFT, you have a known-correct trajectory $y^\ast = (y_1^\ast, y_2^\ast, \ldots, y_T^\ast)$. The model learns to reproduce it by maximizing the probability of each correct token given all preceding tokens:
 
-$$\mathcal{L}_{\text{SFT}} = -\sum_{t=1}^{T} \log \pi_\theta(y_t^* \mid x,\, y_{<t}^*)$$
+$$\mathcal{L}_{\text{SFT}} = -\sum_{t=1}^{T} \log \pi_\theta(y_t^\ast \mid x, y_{<t}^\ast)$$
 
 This is a sum of log-probs (equivalent to the log of the product of conditional probabilities, which avoids the numerical underflow you'd get from multiplying many small numbers directly).
 
@@ -40,11 +40,11 @@ In RL, there is **no known-correct trajectory**. Instead:
 
 The policy gradient loss looks strikingly similar to SFT:
 
-$$\mathcal{L}_{\text{RL}} = -\mathbb{E}_{y \sim \pi_\theta}\left[\sum_{t=1}^{T} \log \pi_\theta(y_t \mid x,\, y_{<t}) \cdot A(x, y)\right]$$
+$$\mathcal{L}_{\text{RL}} = -\mathbb{E}_{y \sim \pi_\theta}\left[\sum_{t=1}^{T} \log \pi_\theta(y_t \mid x, y_{<t}) \cdot A(x, y)\right]$$
 
 | | SFT | RL |
 |---|---|---|
-| **Tokens** | Ground-truth $y^*$ (given) | Sampled $y$ (model-generated) |
+| **Tokens** | Ground-truth $y^\ast$ (given) | Sampled $y$ (model-generated) |
 | **Weighting** | All tokens weighted equally (implicit weight = 1) | Tokens weighted by advantage $A$ |
 | **Signal** | Per-token supervision | Per-trajectory (or per-turn) reward |
 | **Gradient direction** | Always push toward the correct token | Push toward tokens that led to good reward; push away from tokens that led to bad reward |
@@ -150,7 +150,7 @@ Two decoupled components:
 
 **The fix — importance sampling:** The actor sends back the log-probs from generation time. The learner does a forward pass through the *current* policy on the same trajectory to get updated log-probs, then computes a correction ratio:
 
-$$\rho_t = \frac{\pi_{\theta_\text{new}}(y_t \mid s_t)}{\pi_{\theta_\text{old}}(y_t \mid s_t)} = \exp\!\Big(\log \pi_{\theta_\text{new}}(y_t \mid s_t) - \log \pi_{\theta_\text{old}}(y_t \mid s_t)\Big)$$
+$$\rho_t = \frac{\pi_{\theta_\text{new}}(y_t \mid s_t)}{\pi_{\theta_\text{old}}(y_t \mid s_t)} = \exp\Big(\log \pi_{\theta_\text{new}}(y_t \mid s_t) - \log \pi_{\theta_\text{old}}(y_t \mid s_t)\Big)$$
 
 ### What Does the IS Ratio Mean?
 
@@ -186,7 +186,7 @@ $$r_t(\theta) = \frac{\pi_\theta(y_t \mid s_t)}{\pi_{\text{old}}(y_t \mid s_t)}$
 
 Clip the ratio to bound how much the policy can change in one update:
 
-$$\mathcal{L}^{\text{CLIP}}(\theta) = \mathbb{E}\left[\min\Big(r_t \cdot A_t,\;\; \text{clip}(r_t,\; 1{-}\epsilon,\; 1{+}\epsilon) \cdot A_t\Big)\right]$$
+$$\mathcal{L}^{\text{CLIP}}(\theta) = \mathbb{E}\left[\min\Big(r_t \cdot A_t, \text{clip}(r_t, 1-\epsilon, 1+\epsilon) \cdot A_t\Big)\right]$$
 
 where typically $\epsilon = 0.2$, bounding $r_t$ to $[0.8, 1.2]$.
 
@@ -213,7 +213,7 @@ $$A_t = R_t - V_\phi(s_t) \quad \text{(simple form)}$$
 
 In practice, PPO uses **Generalized Advantage Estimation (GAE)** which smoothly interpolates between low-variance/high-bias (TD) and high-variance/low-bias (Monte Carlo) estimates:
 
-$$\hat{A}_t^{\text{GAE}} = \sum_{l=0}^{T-t} (\gamma\lambda)^l \,\delta_{t+l}, \quad \text{where } \delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)$$
+$$\hat{A}_t^{\text{GAE}} = \sum_{l=0}^{T-t} (\gamma\lambda)^l \delta_{t+l}, \quad \text{where } \delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)$$
 
 **Bias-variance tradeoff of the critic:**
 - **Reduces variance** compared to using a sample-based baseline (like GRPO's group mean), because $V(s)$ is trained over many examples and provides a smooth, state-dependent baseline.
@@ -226,7 +226,7 @@ Let $r_t = \pi_\theta(y_t \mid s_t) / \pi_{\text{old}}(y_t \mid s_t)$ and $A_t$ 
 
 The PPO objective is:
 
-$$\mathcal{L} = \min\Big(r_t \cdot A_t,\;\; \text{clip}(r_t,\; 1{-}\epsilon,\; 1{+}\epsilon) \cdot A_t\Big)$$
+$$\mathcal{L} = \min\Big(r_t \cdot A_t, \text{clip}(r_t, 1-\epsilon, 1+\epsilon) \cdot A_t\Big)$$
 
 There are **six cases** to consider. In each, ask: does the `min` select the clipped or unclipped term?
 
@@ -262,11 +262,11 @@ The critic $V_\phi(s)$ is trained to predict expected returns, and its predictio
 
 The fix mirrors the policy clipping idea. Define a clipped value prediction:
 
-$$V_{\text{clip}} = V_{\text{old}}(s_t) + \text{clip}\big(V_{\text{new}}(s_t) - V_{\text{old}}(s_t),\; -\epsilon,\; +\epsilon\big)$$
+$$V_{\text{clip}} = V_{\text{old}}(s_t) + \text{clip}\big(V_{\text{new}}(s_t) - V_{\text{old}}(s_t), -\epsilon, +\epsilon\big)$$
 
 Then the value loss takes the **max** of the clipped and unclipped squared errors:
 
-$$\mathcal{L}^{V}(\phi) = \frac{1}{2}\, \max\!\Big(\big(R_t - V_{\text{new}}(s_t)\big)^2,\;\; \big(R_t - V_{\text{clip}}(s_t)\big)^2\Big)$$
+$$\mathcal{L}^{V}(\phi) = \frac{1}{2} \max\Big(\big(R_t - V_{\text{new}}(s_t)\big)^2, \big(R_t - V_{\text{clip}}(s_t)\big)^2\Big)$$
 
 | Term | What it does |
 |------|-------------|
@@ -305,7 +305,7 @@ where $\mu_G$ and $\sigma_G$ are the mean and std of the group's rewards.
 
 ### GRPO Objective
 
-$$\mathcal{L}^{\text{GRPO}}(\theta) = \mathbb{E}\left[\frac{1}{G}\sum_{i=1}^{G} \frac{1}{T_i}\sum_{t=1}^{T_i} \left(\min\!\Big(r_{i,t}\; \hat{A}_i,\;\; \text{clip}(r_{i,t},\; 1{-}\epsilon,\; 1{+}\epsilon)\;\hat{A}_i\Big) - \beta\, D_{\text{KL}}^{(i,t)}\right)\right]$$
+$$\mathcal{L}^{\text{GRPO}}(\theta) = \mathbb{E}\left[\frac{1}{G}\sum_{i=1}^{G} \frac{1}{T_i}\sum_{t=1}^{T_i} \left(\min\Big(r_{i,t} \hat{A}_i, \text{clip}(r_{i,t}, 1-\epsilon, 1+\epsilon) \hat{A}_i\Big) - \beta D_{\text{KL}}^{(i,t)}\right)\right]$$
 
 where:
 - $r_{i,t} = \frac{\pi_\theta(y_{i,t} \mid s_{i,t})}{\pi_{\theta_{\text{old}}}(y_{i,t} \mid s_{i,t})}$ is the **per-token** probability ratio for token $t$ in trajectory $i$.
@@ -357,17 +357,17 @@ This is expensive, unstable, and requires careful hyperparameter tuning. DPO col
 
 Start from the KL-regularized RL objective that RLHF tries to solve:
 
-$$\max_\pi \; \mathbb{E}_{x,\, y \sim \pi}\big[r(x, y)\big] - \beta \, D_{\text{KL}}\big(\pi \| \pi_{\text{ref}}\big)$$
+$$\max_\pi \mathbb{E}_{x, y \sim \pi}\big[r(x, y)\big] - \beta D_{\text{KL}}\big(\pi \| \pi_{\text{ref}}\big)$$
 
 This has a **closed-form optimal solution**:
 
-$$\pi^*(y \mid x) = \frac{1}{Z(x)} \; \pi_{\text{ref}}(y \mid x) \; \exp\!\Big(\frac{r(x, y)}{\beta}\Big)$$
+$$\pi^\ast(y \mid x) = \frac{1}{Z(x)} \pi_{\text{ref}}(y \mid x) \exp\Big(\frac{r(x, y)}{\beta}\Big)$$
 
 where $Z(x)$ is a normalizing constant (partition function).
 
 The magic trick: **rearrange this to solve for the reward** instead of the policy:
 
-$$r(x, y) = \beta \log \frac{\pi^*(y \mid x)}{\pi_{\text{ref}}(y \mid x)} + \beta \log Z(x)$$
+$$r(x, y) = \beta \log \frac{\pi^\ast(y \mid x)}{\pi_{\text{ref}}(y \mid x)} + \beta \log Z(x)$$
 
 This says: if you know the optimal policy, you implicitly know the reward. The language model *is* secretly a reward model.
 
@@ -375,7 +375,7 @@ This says: if you know the optimal policy, you implicitly know the reward. The l
 
 Plug this implicit reward into the Bradley-Terry preference model $P(y_w \succ y_l) = \sigma(r(x, y_w) - r(x, y_l))$:
 
-$$\mathcal{L}_{\text{DPO}}(\theta) = -\mathbb{E}_{(x,\, y_w,\, y_l)}\left[\log \sigma\!\Big(\beta \log \frac{\pi_\theta(y_w \mid x)}{\pi_{\text{ref}}(y_w \mid x)} - \beta \log \frac{\pi_\theta(y_l \mid x)}{\pi_{\text{ref}}(y_l \mid x)}\Big)\right]$$
+$$\mathcal{L}_{\text{DPO}}(\theta) = -\mathbb{E}_{(x, y_w, y_l)}\left[\log \sigma\Big(\beta \log \frac{\pi_\theta(y_w \mid x)}{\pi_{\text{ref}}(y_w \mid x)} - \beta \log \frac{\pi_\theta(y_l \mid x)}{\pi_{\text{ref}}(y_l \mid x)}\Big)\right]$$
 
 The $Z(x)$ terms cancel (they're the same for both responses to the same prompt), leaving a clean loss.
 
@@ -440,7 +440,7 @@ DPO inherits these assumptions and can overfit to them, especially on noisy pref
 
 IPO is a special case of a more general framework called **ΨPO**, which unifies preference optimization methods:
 
-$$\mathcal{L}_{\Psi\text{PO}}(\theta) = \mathbb{E}_{(x,\, y_w,\, y_l)}\left[\Psi\!\left(\log \frac{\pi_\theta(y_w \mid x)}{\pi_{\text{ref}}(y_w \mid x)} - \log \frac{\pi_\theta(y_l \mid x)}{\pi_{\text{ref}}(y_l \mid x)}\right)\right]$$
+$$\mathcal{L}_{\Psi\text{PO}}(\theta) = \mathbb{E}_{(x, y_w, y_l)}\left[\Psi\left(\log \frac{\pi_\theta(y_w \mid x)}{\pi_{\text{ref}}(y_w \mid x)} - \log \frac{\pi_\theta(y_l \mid x)}{\pi_{\text{ref}}(y_l \mid x)}\right)\right]$$
 
 Different choices of $\Psi$ give different algorithms:
 
